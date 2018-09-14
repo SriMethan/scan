@@ -1,3 +1,9 @@
+A modified version of Scan 3.0 for lidraughts.org, by Stefan Schermann
+Planned changes: multipv support for analysis, options for a better handicap by reducing search and/or eval
+
+The original readme.txt is included below, sources are distributed under the same license
+
+---
 
 Scan 3.0 Copyright (C) 2015-2017 Fabien Letouzey.
 This program is distributed under the GNU General Public License version 3.
