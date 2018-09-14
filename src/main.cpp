@@ -262,6 +262,7 @@ static void hub_loop() {
 
          int depth = -1;
          double move_time = -1.0;
+		 int handicap = -1;
 
          bool smart = false;
          int moves = 0;
@@ -280,6 +281,8 @@ static void hub_loop() {
                depth = std::stoi(p.second);
             } else if (p.first == "move-time") {
                move_time = std::stod(p.second);
+            } else if (p.first == "handicap") {
+               handicap = std::stod(p.second);
             } else if (p.first == "moves") {
                smart = true;
                moves = std::stoi(p.second);
@@ -298,6 +301,7 @@ static void hub_loop() {
 
          if (depth >= 0) si.depth = Depth(depth);
          if (move_time >= 0.0) si.set_time(move_time);
+         if (handicap >= 0) si.handicap = handicap;
 
          if (smart) si.set_time(moves, game_time, inc);
 

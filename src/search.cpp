@@ -196,6 +196,7 @@ private :
    List p_list;
 
    int p_bb_size;
+   int p_handicap;
 
    Search_Local p_sl[16];
 
@@ -215,7 +216,7 @@ private :
 
 public :
 
-   void new_search    (int bb_size);
+   void new_search    (int bb_size, int handicap);
    void init_search   (const Search_Input & si, Search_Output & so, const Node & node, const List & list);
    void collect_stats ();
    void end_search    ();
@@ -255,6 +256,7 @@ public :
    double factor () const { return p_factor; }
 
    int bb_size () const { return p_bb_size; }
+   int handicap() const { return p_handicap; }
 
    const Search_Local & sl (int id) const { return p_sl[id]; }
          Search_Local & sl (int id)       { return p_sl[id]; }
@@ -337,7 +339,7 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
    G_Time.init(si, node);
 
    Search_Global sg;
-   sg.new_search(bb_size); // also launches threads
+   sg.new_search(bb_size, si.handicap); // also launches threads
    sg.init_search(si, so, node, list);
 
    Move easy_move = move::None;
@@ -659,9 +661,10 @@ static double time_lag(double time) {
    return std::max(time - 0.1, 0.0);
 }
 
-void Search_Global::new_search(int bb_size) {
+void Search_Global::new_search(int bb_size, int handicap) {
 
    p_bb_size = bb_size;
+   p_handicap = handicap;
 
    G_SMP.busy = false;
    p_root_sp.init_root();
@@ -1321,7 +1324,8 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
 
    if (pos::is_wipe(node)) return leaf(score::loss(ply), ply);
 
-   if (ply >= Ply_Max) return leaf(eval(node), ply);
+   int handicap = p_sg->handicap();
+   if (ply >= Ply_Max || handicap > 2) return leaf(eval(node), ply);
 
    // move-loop init
 
@@ -1334,13 +1338,13 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
 
       // bitbases
 
-      if (bb::pos_is_search(node, p_sg->bb_size())) {
+      if (handicap == 0 && bb::pos_is_search(node, p_sg->bb_size())) {
          return leaf(bb_probe(node, ply), ply);
       }
 
       // threat position?
 
-      if (depth == 0 && pos::is_threat(node)) {
+      if (handicap == 0 && depth == 0 && pos::is_threat(node)) {
          return search(node, alpha, beta, Depth(1), ply + Ply(1), false, pv); // one-ply search
       }
 
@@ -1353,28 +1357,30 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
       if (sc >= beta) return leaf(sc, ply);
 
       list.clear();
-      if (var::Variant == var::BT) gen_promotions(list, node);
-      if (!pos::has_king(node) && !pos::is_threat(node)) add_sacs(list, node);
+      if (handicap == 0 && var::Variant == var::BT) gen_promotions(list, node);
+      if (handicap == 0 && !pos::has_king(node) && !pos::is_threat(node)) add_sacs(list, node);
    }
 
    // move loop
 
    for (int i = 0; i < list.size(); i++) {
+      if (handicap < 2 || ml::rand_bool(0.5)) {
 
-      Move mv = list.move(i);
+         Move mv = list.move(i);
 
-      Line new_pv;
+         Line new_pv;
 
-      inc_node();
-      Node new_node = node.succ(mv);
-      Score sc = -qs(new_node, -beta, -std::max(alpha, bs), depth - Depth(1), ply + Ply(1), new_pv);
+         inc_node();
+         Node new_node = node.succ(mv);
+         Score sc = -qs(new_node, -beta, -std::max(alpha, bs), depth - Depth(1), ply + Ply(1), new_pv);
 
-      if (sc > bs) {
+         if (sc > bs) {
 
-         bs = sc;
-         pv.concat(mv, new_pv);
+           bs = sc;
+           pv.concat(mv, new_pv);
 
-         if (sc >= beta) break;
+           if (sc >= beta) break;
+         }
       }
    }
 

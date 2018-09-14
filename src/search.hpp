@@ -62,6 +62,7 @@ public :
    bool input;
    Output_Type output;
    bool ponder;
+   int handicap;
 
 private :
 

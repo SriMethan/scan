@@ -1,4 +1,12 @@
+
 A modified version of Scan 3.0 for lidraughts.org, by Stefan Schermann
+
+Added handicap setting to the hub level command, taking a value of 0-3, which progressively disabled the following qs features:
+0 = No handicap
+1 = No qs evals for quiet positions
+2 = Randomly drop 50% of the captures from the qs
+3 = No qs altogether
+
 Planned changes: multipv support for analysis, options for a better handicap by reducing search and/or eval
 
 The original readme.txt is included below, sources are distributed under the same license
