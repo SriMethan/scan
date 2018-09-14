@@ -1,0 +1,7 @@
+src/.vs/
+src/Debug/
+src/x64/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
