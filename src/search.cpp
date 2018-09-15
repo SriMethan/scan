@@ -197,6 +197,7 @@ private :
 
    int p_bb_size;
    int p_handicap;
+   double p_drop_pct;
 
    Search_Local p_sl[16];
 
@@ -216,7 +217,7 @@ private :
 
 public :
 
-   void new_search    (int bb_size, int handicap);
+   void new_search    (int bb_size, int handicap, double drop_pct);
    void init_search   (const Search_Input & si, Search_Output & so, const Node & node, const List & list);
    void collect_stats ();
    void end_search    ();
@@ -257,6 +258,7 @@ public :
 
    int bb_size () const { return p_bb_size; }
    int handicap() const { return p_handicap; }
+   double drop_pct() const { return p_drop_pct; }
 
    const Search_Local & sl (int id) const { return p_sl[id]; }
          Search_Local & sl (int id)       { return p_sl[id]; }
@@ -339,7 +341,7 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
    G_Time.init(si, node);
 
    Search_Global sg;
-   sg.new_search(bb_size, si.handicap); // also launches threads
+   sg.new_search(bb_size, si.handicap, si.drop_pct); // also launches threads
    sg.init_search(si, so, node, list);
 
    Move easy_move = move::None;
@@ -515,6 +517,9 @@ void Search_Input::init() {
    output = Output_None;
    ponder = false;
 
+   handicap = 0;
+   drop_pct = -1.0;
+
    p_smart = false;
    p_moves = 0;
    p_time = 1E6;
@@ -661,10 +666,14 @@ static double time_lag(double time) {
    return std::max(time - 0.1, 0.0);
 }
 
-void Search_Global::new_search(int bb_size, int handicap) {
+void Search_Global::new_search(int bb_size, int handicap, double drop_pct) {
 
    p_bb_size = bb_size;
    p_handicap = handicap;
+   if (drop_pct > 0.0 && drop_pct < 1.0)
+      p_drop_pct = 1.0 - drop_pct;
+   else
+      p_drop_pct = -1.0;
 
    G_SMP.busy = false;
    p_root_sp.init_root();
@@ -1246,29 +1255,36 @@ void Search_Local::move_loop(Local & local) {
    local.i = 0;
    local.j = 0;
 
+   double drop_pct = p_sg->drop_pct();
+   int dropped = 0;
    while (local.score < local.beta && local.i < local.list.size()) {
+      if (drop_pct < 0.0 || dropped + 1 == local.list.size() || ml::rand_bool(drop_pct)) {
 
-      int searched_size = local.j;
+         int searched_size = local.j;
 
-      if (local.ply == 0) { // root event
-         p_sg->set_first(searched_size == 0);
+         if (local.ply == 0) { // root event
+            p_sg->set_first(searched_size == 0);
+         }
+
+         // SMP
+
+         if (var::SMP && local.depth >= 6 && searched_size != 0 && local.list.size() - searched_size >= 5 && p_sg->has_worker() && p_pool_size < Pool_Size) {
+            split(local);
+            break; // share the epilogue
+         }
+
+         // search move
+
+         Move mv = local.list.move(local.i++);
+
+         Line pv;
+         Score sc = search_move(mv, local, pv);
+
+         local_update(local, mv, sc, pv, *p_sg);
+      } else {
+         local.i++;
+         dropped++;
       }
-
-      // SMP
-
-      if (var::SMP && local.depth >= 6 && searched_size != 0 && local.list.size() - searched_size >= 5 && p_sg->has_worker() && p_pool_size < Pool_Size) {
-         split(local);
-         break; // share the epilogue
-      }
-
-      // search move
-
-      Move mv = local.list.move(local.i++);
-
-      Line pv;
-      Score sc = search_move(mv, local, pv);
-
-      local_update(local, mv, sc, pv, *p_sg);
    }
 }
 

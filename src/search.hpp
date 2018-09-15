@@ -63,6 +63,7 @@ public :
    Output_Type output;
    bool ponder;
    int handicap;
+   double drop_pct;
 
 private :
 

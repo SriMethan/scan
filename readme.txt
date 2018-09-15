@@ -1,13 +1,15 @@
 
 A modified version of Scan 3.0 for lidraughts.org, by Stefan Schermann
 
-Added handicap setting to the hub level command, taking a value of 0-3, which progressively disabled the following qs features:
-0 = No handicap
-1 = No qs evals for quiet positions
+Added handicap setting to the hub-command "level", taking a value of 0-3 (e.g. "level handicap=3"), which progressively disables the following quiescence search features:
+0 = Full qs, or no handicap
+1 = No qs for quiet positions
 2 = Randomly drop 50% of the captures from the qs
 3 = No qs altogether
 
-Planned changes: multipv support for analysis, options for a better handicap by reducing search and/or eval
+Added (experimental) drop-pct setting to the hub-command "level", which sets a percentage of moves that will be randomly dropped from the search for each node (e.g. "level drop=0.05" drops 5% of moves).
+
+Planned changes: multipv support for analysis
 
 The original readme.txt is included below, sources are distributed under the same license
 
