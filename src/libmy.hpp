@@ -122,6 +122,7 @@ namespace ml {
    inline uint64 bit_mask  (int n) { return bit(n) - 1; }
 
 #ifdef _MSC_VER
+#include <intrin.h>
    inline int bit_first (uint64 b) { assert(b != 0); unsigned long i; _BitScanForward64(&i, b); return i; }
    inline int bit_count (uint64 b) { return int(__popcnt64(b)); }
 #else
