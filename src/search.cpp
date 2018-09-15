@@ -1334,18 +1334,21 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
    List list;
    gen_captures(list, node);
 
+   if (handicap == 2 && list.size() == 1 && ml::rand_bool(0.5))
+      list.clear();
+
    if (list.size() == 0) { // quiet position
 
-      // bitbases
+      if (handicap == 0) {
 
-      if (handicap == 0 && bb::pos_is_search(node, p_sg->bb_size())) {
-         return leaf(bb_probe(node, ply), ply);
-      }
+         // bitbases
+         if (bb::pos_is_search(node, p_sg->bb_size()))
+            return leaf(bb_probe(node, ply), ply);
 
-      // threat position?
+         // threat position?
+         if (depth == 0 && pos::is_threat(node))
+            return search(node, alpha, beta, Depth(1), ply + Ply(1), false, pv); // one-ply search
 
-      if (handicap == 0 && depth == 0 && pos::is_threat(node)) {
-         return search(node, alpha, beta, Depth(1), ply + Ply(1), false, pv); // one-ply search
       }
 
       // stand pat
@@ -1357,14 +1360,17 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
       if (sc >= beta) return leaf(sc, ply);
 
       list.clear();
-      if (handicap == 0 && var::Variant == var::BT) gen_promotions(list, node);
-      if (handicap == 0 && !pos::has_king(node) && !pos::is_threat(node)) add_sacs(list, node);
+      if (handicap == 0) {
+         if (var::Variant == var::BT) gen_promotions(list, node);
+         if (!pos::has_king(node) && !pos::is_threat(node)) add_sacs(list, node);
+      }
    }
 
    // move loop
 
+   int skipped = 0;
    for (int i = 0; i < list.size(); i++) {
-      if (handicap < 2 || ml::rand_bool(0.5)) {
+      if (handicap < 2 || skipped + 1 == list.size() || ml::rand_bool(0.5)) {
 
          Move mv = list.move(i);
 
@@ -1381,6 +1387,8 @@ Score Search_Local::qs(const Node & node, Score alpha, Score beta, Depth depth, 
 
            if (sc >= beta) break;
          }
+      } else {
+         skipped++;
       }
    }
 
