@@ -54,6 +54,10 @@ public :
    void loop ();
 };
 
+#ifdef __EMSCRIPTEN__
+static std::thread H_Thread;
+#endif
+
 // prototypes
 
 static void hub_loop ();
@@ -100,9 +104,13 @@ int main(int argc, char * argv[]) {
 
    } else if (arg == "hub") {
 
+#ifndef __EMSCRIPTEN__
       listen_input();
-
       hub_loop();
+#else
+      H_Thread = std::thread(hub_loop);
+      H_Thread.detach();
+#endif
 
    } else {
 

@@ -42,9 +42,18 @@ static void input_program (Input * input);
 // functions
 
 void listen_input() {
+#ifndef __EMSCRIPTEN__
    G_Thread = std::thread(input_program, &G_Input);
    G_Thread.detach();
+#endif
 }
+
+#ifdef __EMSCRIPTEN__
+extern "C" void scan_command(const char *c_cmd) {
+   std::string line(c_cmd);
+   G_Input.set_line(line);
+}
+#endif
 
 static void input_program(Input * input) {
 
