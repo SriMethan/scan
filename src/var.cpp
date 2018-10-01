@@ -131,8 +131,12 @@ void update() {
    Book_Ply      = get_int("book-ply");
    Book_Margin   = get_int("book-margin");
    Ponder        = get_bool("ponder");
-   SMP_Threads   = get_int("threads");
-   SMP           = SMP_Threads > 1;
+#ifdef __EMSCRIPTEN__
+   SMP_Threads   = 1;
+#else
+   SMP_Threads = get_int("threads");
+#endif
+   SMP = SMP_Threads > 1;
    TT_Size       = 1 << get_int("tt-size");
    BB_Size       = get_int("bb-size");
    BB            = BB_Size > 0;

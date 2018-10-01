@@ -6,6 +6,7 @@
 
 #include "libmy.hpp"
 #include "thread.hpp"
+#include "main.hpp"
 
 // types
 
@@ -33,7 +34,9 @@ public :
 // variables
 
 static Input G_Input;
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 static std::thread G_Thread;
+#endif
 
 // prototypes
 
@@ -52,6 +55,9 @@ void listen_input() {
 extern "C" void scan_command(const char *c_cmd) {
    std::string line(c_cmd);
    G_Input.set_line(line);
+#ifdef __EMSCRIPTEN__
+   hub_loop();
+#endif
 }
 #endif
 

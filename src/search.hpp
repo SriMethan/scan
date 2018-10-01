@@ -74,8 +74,6 @@ private :
 
 public :
 
-   Search_Input () { init(); }
-
    void init ();
 
    void set_time (double time);

@@ -1,6 +1,10 @@
 
 // includes
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +29,7 @@
 #include "thread.hpp"
 #include "tt.hpp"
 #include "var.hpp"
+#include "main.hpp"
 
 // types
 
@@ -276,6 +281,11 @@ static Time G_Time; // TODO: move to SG
 static SMP G_SMP; // lock to create and broadcast split points // MOVE ME to SG?
 static Lockable G_IO;
 
+Search_Global search_sg;
+Search_Output search_so;
+Search_Input search_si;
+Move easy_move;
+
 // prototypes
 
 static void gen_moves_bb (List & list, const Pos & pos);
@@ -286,6 +296,14 @@ static double time_lag (double time);
 
 static void local_update (Local & local, Move mv, Score sc, const Line & pv, Search_Global & sg); // MOVE ME
 
+#ifdef __EMSCRIPTEN__
+void search_iteration(int d);
+
+void search_iteration_call(void *d) {
+   search_iteration((int)d);
+}
+#endif
+
 // functions
 
 void search(Search_Output & so, const Node & node, const Search_Input & si) {
@@ -294,7 +312,10 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
 
    var::update();
 
-   so.init(si, node);
+   search_so = so;
+   search_si = si;
+
+   search_so.init(search_si, node);
 
    int bb_size = var::BB_Size;
 
@@ -309,16 +330,16 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
    gen_moves_bb(list, node);
    assert(list.size() != 0);
 
-   if (si.move && !si.ponder && list.size() == 1) {
+   if (search_si.move && !search_si.ponder && list.size() == 1) {
 
       Move mv = list.move(0);
       Score sc = quick_score(node);
 
-      so.new_best_move(mv, sc);
+      search_so.new_best_move(mv, sc);
       return;
    }
 
-   if (var::Book && si.book) {
+   if (var::Book && search_si.book) {
 
       int ply = pos::stage(node);
       assert(ply >= 0);
@@ -329,24 +350,23 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
       Score sc;
 
       if (book::probe(node, Score(margin), mv, sc)) {
-         so.new_best_move(mv, sc);
+         search_so.new_best_move(mv, sc);
          return;
       }
    }
 
    // more init
 
-   G_Time.init(si, node);
+   G_Time.init(search_si, node);
 
-   Search_Global sg;
-   sg.new_search(bb_size, si.handicap); // also launches threads
-   sg.init_search(si, so, node, list);
+   search_sg.new_search(bb_size, search_si.handicap); // also launches threads
+   search_sg.init_search(search_si, search_so, node, list);
 
-   Move easy_move = move::None;
+   easy_move = move::None;
 
-   if (si.smart() && list.size() > 1) {
+   if (search_si.smart() && list.size() > 1) {
 
-      sg.sl(0).search_all_try(node, list, Depth(1));
+      search_sg.sl(0).search_all_try(node, list, Depth(1));
 
       if (list.score(0) - list.score(1) >= +100 && list.move(0) == quick_move(node)) {
          easy_move = list.move(0);
@@ -355,47 +375,79 @@ void search(Search_Output & so, const Node & node, const Search_Input & si) {
 
    // iterative deepening
 
+#ifndef __EMSCRIPTEN__
    try {
 
-      for (int d = 1; d <= si.depth; d++) {
+      for (int d = 1; d <= search_si.depth; d++) {
+#else
+   emscripten_async_call(search_iteration_call, (void*)1, 0);
+}
+
+void search_iteration(int d) {
+   bool aborted = false;
+   try {
+#endif
 
          Depth depth = Depth(d);
 
-         sg.start_iter(depth);
-         sg.search(depth);
-         sg.end_iter(depth);
-         sg.collect_stats();
+         search_sg.start_iter(depth);
+         search_sg.search(depth);
+         search_sg.end_iter(depth);
+         search_sg.collect_stats();
 
-         Move mv = so.move;
-         double time = so.time();
-         // if (true || time >= 0.01) so.disp_best_move();
+         Move mv = search_so.move;
+         double time = search_so.time();
+         // if (true || time >= 0.01) search_so.disp_best_move();
 
          // early exit?
 
          bool abort = false;
 
-         if (mv == easy_move && !sg.change() && time >= G_Time.time_0() / 16.0) abort = true;
+         if (mv == easy_move && !search_sg.change() && time >= G_Time.time_0() / 16.0) abort = true;
+#ifndef __EMSCRIPTEN__
+         if (search_si.smart() && time >= G_Time.time_0() * search_sg.factor() * lerp(0.4, 0.8, pos::phase(node))) abort = true;
 
-         if (si.smart() && time >= G_Time.time_0() * sg.factor() * lerp(0.4, 0.8, pos::phase(node))) abort = true;
-
-         if (si.smart() && sg.drop()) abort = false;
-
+         if (search_si.smart() && search_sg.drop()) abort = false;
+#endif
          if (depth >= 12 && abort) {
-            sg.set_flag(true);
-            if (!sg.ponder()) break;
+            search_sg.set_flag(true);
+            if (!search_sg.ponder()) {
+#ifndef __EMSCRIPTEN__
+               break;
+#else
+               abort = true;
+#endif
+            }
          }
+
+#ifndef __EMSCRIPTEN__
       }
 
    } catch (const Abort &) {
 
-      // so.disp_best_move();
+      // search_so.disp_best_move();
    }
 
-   if (si.output == Output_Terminal) std::cout << std::endl;
+   if (search_si.output == Output_Terminal) std::cout << std::endl;
+#else
+   }
+   catch (const Abort &) {
+      aborted = true;
+   }
 
-   sg.end_search(); // sync with threads
+   if (!aborted && d < search_si.depth) {
+      emscripten_async_call(search_iteration_call, (void*)(d + 1), 0);
+   } else {  
+#endif
 
-   so.end();
+   search_sg.end_search(); // sync with threads
+
+   search_so.end();
+
+#ifdef __EMSCRIPTEN__
+   after_search();
+}
+#endif
 }
 
 Move quick_move(const Pos & pos) {

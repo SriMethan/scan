@@ -23,7 +23,7 @@
 #include "bb_index.hpp"
 #include "bit.hpp"
 #include "book.hpp"
-#ifndef __pnacl__
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 #include "dxp.hpp"
 #endif
 #include "eval.hpp"
@@ -33,6 +33,7 @@
 #include "hub.hpp"
 #include "libmy.hpp"
 #include "list.hpp"
+#include "main.hpp"
 #include "move.hpp"
 #include "move_gen.hpp"
 #include "pos.hpp"
@@ -45,6 +46,7 @@
 
 // types
 
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 class Terminal {
 
 private :
@@ -64,12 +66,11 @@ public :
 
    void loop ();
 };
-
-#if defined(__EMSCRIPTEN__) || defined(__pnacl__)
-static std::thread H_Thread;
 #endif
 
 #ifdef __pnacl__
+static std::thread H_Thread;
+
 class CaptureBuf : public std::streambuf {
 public:
    CaptureBuf() {
@@ -94,9 +95,11 @@ protected:
 };
 #endif
 
-// prototypes
+#if defined(__EMSCRIPTEN__)
+static std::atomic<bool> is_searching;
+#endif
 
-static void hub_loop ();
+// prototypes
 
 static void disp_game (const Game & game);
 
@@ -107,7 +110,7 @@ static void init_low  ();
 
 int main(int argc, char * argv[]) {
 #ifdef __pnacl__
-   PSInstanceSetVerbosity(PSV_TRACE);
+   PSInstanceSetVerbosity(PSV_ERROR);
    PSEventSetFilter(PSE_ALL);
    std::string arg = "hub";
    umount("/"); // By default, nacl_io mounts / to pass through to the original NaCl filesystem (which doesn't do much)
@@ -119,11 +122,13 @@ int main(int argc, char * argv[]) {
    CaptureBuf* captureBuf = new CaptureBuf();
    std::streambuf* origBuf = std::cout.rdbuf(captureBuf);
    std::streambuf* origBufErr = std::cerr.rdbuf(captureBuf);
+#elif defined(__EMSCRIPTEN__)
+   std::string arg = "hub";
 #else
    std::string arg = "";
    if (argc > 1) arg = argv[1];
 #endif
-
+   
    common_init();
    bit::init();
    hash::init();
@@ -138,14 +143,14 @@ int main(int argc, char * argv[]) {
    var::load("scan.ini");
 
    if (arg == "") { // terminal
-
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
       listen_input();
 
       init_high();
 
       Terminal term;
       term.loop();
-#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
+
    } else if (arg == "dxp") {
 
       init_high();
@@ -153,10 +158,10 @@ int main(int argc, char * argv[]) {
       dxp::loop();
 #endif
    } else if (arg == "hub") {
-#if defined(__EMSCRIPTEN__) || defined(__pnacl__)
+#ifdef __pnacl__
       H_Thread = std::thread(hub_loop);
       H_Thread.detach();
-#else
+#elif !defined(__EMSCRIPTEN__)
       listen_input();
       hub_loop();
 #endif
@@ -193,14 +198,20 @@ int main(int argc, char * argv[]) {
 
 }
 
-static void hub_loop() {
+Game hub_game;
 
-   Game game;
+Search_Output hub_so;
+Search_Input hub_si;
 
-   Search_Input si;
-   si.init();
-
+void hub_loop() {
+#ifndef __EMSCRIPTEN__
    while (true) {
+#else
+   if (is_searching) { 
+      return; // current search has to end before we can process next command, hub_loop will be called by after_search to process remaining commands
+   }
+   while(has_input()) { // commands arrive synchronously, but we may have ignored multiple commands while is_searching was true, so loop until we run out
+#endif
 
       std::string line = hub::read();
       hub::Scanner scan(line);
@@ -215,7 +226,9 @@ static void hub_loop() {
       if (false) {
 
       } else if (command == "go") {
-
+#ifdef __EMSCRIPTEN__
+         is_searching = true;
+#endif
          bool think = false; // ignored
          bool ponder = false;
          bool analyze = false;
@@ -234,35 +247,22 @@ static void hub_loop() {
             }
          }
 
-         si.move = !analyze;
-         si.book = !analyze;
-         si.input = true;
-         si.output = Output_Hub;
-         si.ponder = ponder;
+         hub_si.move = !analyze;
+         hub_si.book = !analyze;
+         hub_si.input = true;
+         hub_si.output = Output_Hub;
+         hub_si.ponder = ponder;
 
-         Search_Output so;
-         search(so, game.node(), si);
+         search(hub_so, hub_game.node(), hub_si);
 
-         Move move = so.move;
-         Move answer = so.answer;
-
-         if (move == move::None) {
-            move = quick_move(game.node());
-         }
-
-         if (move != move::None && answer == move::None) {
-            Node new_node = game.node().succ(move);
-            answer = quick_move(new_node);
-         }
-
-         std::string line = "done";
-         if (move   != move::None) hub::add_pair(line, "move",   move::to_hub(move));
-         if (answer != move::None) hub::add_pair(line, "ponder", move::to_hub(answer));
-         hub::write(line);
-
-         si.init(); // reset level
-
+#ifdef __EMSCRIPTEN__
+         return; // search continues as a series of linked emscripten_async_calls, which invokes after_search() once terminated
+#else
+         after_search();
+#endif
       } else if (command == "hub") {
+
+         hub_si.init();
 
          std::string line = "id";
          hub::add_pair(line, "name", Engine_Name);
@@ -379,11 +379,11 @@ static void hub_loop() {
             }
          }
 
-         if (depth >= 0) si.depth = Depth(depth);
-         if (move_time >= 0.0) si.set_time(move_time);
-         if (handicap >= 0) si.handicap = handicap;
+         if (depth >= 0) hub_si.depth = Depth(depth);
+         if (move_time >= 0.0) hub_si.set_time(move_time);
+         if (handicap >= 0) hub_si.handicap = handicap;
 
-         if (smart) si.set_time(moves, game_time, inc);
+         if (smart) hub_si.set_time(moves, game_time, inc);
 
       } else if (command == "new-game") {
 
@@ -419,7 +419,7 @@ static void hub_loop() {
          // position
 
          try {
-            game.init(pos_from_hub(pos));
+            hub_game.init(pos_from_hub(pos));
          } catch (const Bad_Input &) {
             hub::error("bad position");
             continue;
@@ -437,11 +437,11 @@ static void hub_loop() {
 
                Move mv = move::from_hub(arg);
 
-               if (!move::is_legal(mv, game.pos())) {
+               if (!move::is_legal(mv, hub_game.pos())) {
                   hub::error("illegal move");
                   break;
                } else {
-                  game.add_move(mv);
+                  hub_game.add_move(mv);
                }
 
             } catch (const Bad_Input &) {
@@ -451,7 +451,7 @@ static void hub_loop() {
             }
          }
 
-         si.init(); // reset level
+         hub_si.init(); // reset level
 
       } else if (command == "quit") {
 
@@ -494,6 +494,34 @@ static void hub_loop() {
    }
 }
 
+void after_search() {
+
+   Move move = hub_so.move;
+   Move answer = hub_so.answer;
+
+   if (move == move::None) {
+      move = quick_move(hub_game.node());
+   }
+
+   if (move != move::None && answer == move::None) {
+      Node new_node = hub_game.node().succ(move);
+      answer = quick_move(new_node);
+   }
+
+   std::string line = "done";
+   if (move != move::None) hub::add_pair(line, "move", move::to_hub(move));
+   if (answer != move::None) hub::add_pair(line, "ponder", move::to_hub(answer));
+   hub::write(line);
+
+   hub_si.init(); // reset level
+
+#if defined(__EMSCRIPTEN__)
+   is_searching = false;
+   hub_loop(); // process any pending commands, including the one we peeked to stop the search
+#endif
+}
+
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 void Terminal::loop() {
 
    p_computer[White] = false;
@@ -726,7 +754,7 @@ void Terminal::go_to(int ply) {
       p_computer[side_opp(p_game.turn())] = opp;
    }
 }
-
+#endif
 static void disp_game(const Game & game) {
 
    Pos pos = game.start_pos();
