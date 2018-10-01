@@ -7,7 +7,29 @@ Added handicap setting to the hub-command "level", taking a value of 0-3 (e.g. "
 2 = No qs for captures
 3 = No bitbases
 
+Added prepocessor directives that allow compilation to a PNaCl pexe, and for WASM / asm.js through Emscripten. Thanks again to Niklas Fiekas, for the inspiration taken from the equivalent Stockfish projects:
+https://github.com/niklasf/stockfish.pexe
+https://github.com/niklasf/stockfish.js
+
+PNaCl:
+-Multithreaded so uses the original hub_loop, stdin is replaced with calls to scan_command() from javascript
+-A virtual filsesystem with scan.ini and eval is loaded over http
+-Can be compiled with the Makefile in src/pnacl
+
+Emscripten:
+-Only single thread is supported, the application exits main() after initialization and maintains global/static state
+-Each call to scan_command() from javascript enters hub_loop() and exits again immediatly afterwards, except when the "go" command launches search
+-Search itself is chopped up as a series of emscripten_async_calls() to remain responsive to commands (e.g. "stop")
+-A virtual filesystem containing scan.ini and eval is included at compile time, assumed to be in the "scan-assets" directory
+-Necessary compilation flags for both targets, to setup the filesystem, exception handling, etc:
+em++ bb_base.cpp bb_comp.cpp bb_index.cpp bit.cpp book.cpp common.cpp dxp.cpp eval.cpp fen.cpp game.cpp hash.cpp hub.cpp libmy.cpp list.cpp main.cpp move.cpp move_gen.cpp pos.cpp score.cpp search.cpp socket.cpp sort.cpp thread.cpp tt.cpp util.cpp var.cpp -ansi -pedantic -Wall -Wextra -std=c++11 -fno-rtti -O2 -flto -s TOTAL_MEMORY=1024MB --preload-file scan-assets@/ -s NO_EXIT_RUNTIME=1 --memory-init-file 0 -s EXPORTED_FUNCTIONS="['_main', '_scan_command']" -s "EXTRA_EXPORTED_RUNTIME_METHODS=['ccall']" -s DISABLE_EXCEPTION_CATCHING=0
+-To target WASM: -s WASM=1 -o scan.html -s "BINARYEN_TRAP_MODE='allow'" -s "BINARYEN_METHOD='native-wasm'" -s BINARYEN_ASYNC_COMPILATION=1
+-To target asm.js: -s WASM=0 -o scan.js
+-It seems that --preload-file won't work in combination with --pre-js (or --post-js), therefore src/pre.js must be copy-pasted to the beginning of the resulting scan.js file (for both targets)
+
+
 Planned changes: multipv support for analysis
+
 
 The original readme.txt is included below, sources are distributed under the same license
 

@@ -9,3 +9,4 @@ src/x64/
 scan.bc
 scan.pexe
 scan.nmf
+make.bat

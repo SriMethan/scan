@@ -1,0 +1,13 @@
+{
+  "program": {
+    "portable": {
+      "pnacl-translate": {
+        "url": "scan.pexe?v=PEXE_VERSION"
+      },
+      "pnacl-debug": {
+        "url": "scan.bc?v=BC_VERSION",
+        "optlevel": 0
+      }
+    }
+  }
+}
