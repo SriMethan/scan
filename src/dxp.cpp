@@ -1,3 +1,4 @@
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 
 // includes
 
@@ -906,4 +907,4 @@ static void put_string(const std::string & s) {
 }
 
 }
-
+#endif

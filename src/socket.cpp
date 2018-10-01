@@ -1,4 +1,4 @@
-
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 // includes
 
 #include <cstdio>
@@ -196,4 +196,4 @@ static bool has_input() {
 }
 
 }
-
+#endif

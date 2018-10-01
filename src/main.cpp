@@ -9,12 +9,23 @@
 #include <string>
 #include <vector>
 
+#ifdef __pnacl__
+#include <sys/mount.h>
+#include "ppapi/cpp/var.h"
+#include "ppapi_simple/ps_main.h"
+#include "ppapi_simple/ps_event.h"
+#include "ppapi_simple/ps_interface.h"
+#include "ppapi_simple/ps_instance.h"
+#endif
+
 #include "bb_base.hpp"
 #include "bb_comp.hpp"
 #include "bb_index.hpp"
 #include "bit.hpp"
 #include "book.hpp"
+#ifndef __pnacl__
 #include "dxp.hpp"
+#endif
 #include "eval.hpp"
 #include "fen.hpp"
 #include "game.hpp"
@@ -54,8 +65,33 @@ public :
    void loop ();
 };
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__pnacl__)
 static std::thread H_Thread;
+#endif
+
+#ifdef __pnacl__
+class CaptureBuf : public std::streambuf {
+public:
+   CaptureBuf() {
+      pos = 0;
+   }
+
+protected:
+   char buffer[8192];
+   int pos;
+
+   virtual int overflow(int c) {
+      if (c == '\n') {
+         buffer[pos] = 0;
+         pos = 0;
+         PSInterfaceMessaging()->PostMessage(PSGetInstanceId(), pp::Var(buffer).pp_var());
+      }
+      else if (pos < sizeof(buffer) - 2) {
+         buffer[pos++] = c;
+      }
+      return 0;
+   }
+};
 #endif
 
 // prototypes
@@ -70,9 +106,23 @@ static void init_low  ();
 // functions
 
 int main(int argc, char * argv[]) {
-
+#ifdef __pnacl__
+   PSInstanceSetVerbosity(PSV_TRACE);
+   PSEventSetFilter(PSE_ALL);
+   std::string arg = "hub";
+   umount("/"); // By default, nacl_io mounts / to pass through to the original NaCl filesystem (which doesn't do much)
+   mount("/assets/vendor/scan/scan_assets",       /* source. Use relative URL */
+      "/",  /* target */
+      "httpfs", /* filesystemtype */
+      0,        /* mountflags */
+      "");      /* data */
+   CaptureBuf* captureBuf = new CaptureBuf();
+   std::streambuf* origBuf = std::cout.rdbuf(captureBuf);
+   std::streambuf* origBufErr = std::cerr.rdbuf(captureBuf);
+#else
    std::string arg = "";
    if (argc > 1) arg = argv[1];
+#endif
 
    common_init();
    bit::init();
@@ -95,30 +145,52 @@ int main(int argc, char * argv[]) {
 
       Terminal term;
       term.loop();
-
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
    } else if (arg == "dxp") {
 
       init_high();
 
       dxp::loop();
-
+#endif
    } else if (arg == "hub") {
-
-#ifndef __EMSCRIPTEN__
-      listen_input();
-      hub_loop();
-#else
+#if defined(__EMSCRIPTEN__) || defined(__pnacl__)
       H_Thread = std::thread(hub_loop);
       H_Thread.detach();
+#else
+      listen_input();
+      hub_loop();
+#endif
+
+#ifdef __pnacl__
+      while (true) {
+         PSEvent* ps_event;
+         // Consume all available events
+         while ((ps_event = PSEventWaitAcquire()) != NULL) {
+            // handle messages from javascript
+            if (ps_event->type == PSE_INSTANCE_HANDLEMESSAGE) {
+               // Convert Pepper Simple message to PPAPI C++ vars
+               pp::Var var_message(ps_event->as_var);
+               // process the message if it is a string
+               if (var_message.is_string()) {
+                  // get the string message
+                  std::string message = var_message.AsString();
+                  scan_command(message.c_str());
+               }
+            }
+            PSEventRelease(ps_event);
+         }
+      }
+      std::cout.rdbuf(origBuf);
+      std::cerr.rdbuf(origBufErr);
 #endif
 
    } else {
-
       std::cerr << "usage: " << argv[0] << " <command>" << std::endl;
       std::exit(EXIT_FAILURE);
    }
 
    return EXIT_SUCCESS;
+
 }
 
 static void hub_loop() {
@@ -695,3 +767,6 @@ static void init_low() {
    tt::G_TT.set_size(var::TT_Size);
 }
 
+#ifdef __pnacl__
+PPAPI_SIMPLE_REGISTER_MAIN(main)
+#endif

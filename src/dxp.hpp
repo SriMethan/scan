@@ -1,4 +1,4 @@
-
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 #ifndef DXP_HPP
 #define DXP_HPP
 
@@ -16,4 +16,4 @@ void loop ();
 }
 
 #endif // !defined DXP_HPP
-
+#endif

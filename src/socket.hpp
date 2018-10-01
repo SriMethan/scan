@@ -1,4 +1,4 @@
-
+#if !defined(__EMSCRIPTEN__) && !defined(__pnacl__)
 #ifndef SOCKET_HPP
 #define SOCKET_HPP
 
@@ -20,4 +20,4 @@ void        write (const std::string & s);
 }
 
 #endif // !defined SOCKET_HPP
-
+#endif

@@ -1,7 +1,11 @@
 src/.vs/
 src/Debug/
 src/x64/
+*.o
 *.sln
 *.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
+scan.bc
+scan.pexe
+scan.nmf

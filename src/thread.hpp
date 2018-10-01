@@ -47,5 +47,9 @@ bool has_input ();
 bool peek_line (std::string & line);
 bool get_line  (std::string & line);
 
+#if defined(__EMSCRIPTEN__) || defined(__pnacl__)
+extern "C" void scan_command(const char *c_cmd);
+#endif
+
 #endif // !defined THREAD_HPP
 
